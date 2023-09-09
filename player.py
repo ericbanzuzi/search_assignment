@@ -79,7 +79,7 @@ class PlayerControllerMinimax(PlayerController):
                 if next_v > v:
                     v = next_v
                     move = next_move
-                alpha = np.max([alpha, v])
+                alpha = max([alpha, v])
                 if beta <= alpha:
                     break
         else:
@@ -89,7 +89,7 @@ class PlayerControllerMinimax(PlayerController):
                 if next_v < v:
                     v = next_v
                     move = next_move
-                beta = np.min([beta, v])
+                beta = min([beta, v])
                 if beta <= alpha:
                     break
         return v, move
@@ -111,7 +111,7 @@ class PlayerControllerMinimax(PlayerController):
             return self.eval_function(node)
         v = -np.inf
         for child in children:
-            v = np.max([v, self.min_value(child, max_depth)])
+            v = max([v, self.min_value(child, max_depth)])
         return v
 
     def min_value(self, node, max_depth):
@@ -121,7 +121,7 @@ class PlayerControllerMinimax(PlayerController):
             return self.eval_function(node)
         v = np.inf
         for child in children:
-            v = np.min([v, self.max_value(child, max_depth)])
+            v = min([v, self.max_value(child, max_depth)])
         return v
 
     def eval_function(self, node):
