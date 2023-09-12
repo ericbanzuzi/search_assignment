@@ -49,7 +49,7 @@ class PlayerControllerMinimax(PlayerController):
             node = Node(message=msg, player=0)
 
             # Possible next moves: "stay", "left", "right", "up", "down"
-            max_depth = 8
+            max_depth = 7
             best_move = self.search_best_next_move(node=node, max_depth=max_depth)
             # Execute next action
             self.sender({"action": best_move, "search_time": None})
@@ -71,86 +71,74 @@ class PlayerControllerMinimax(PlayerController):
         self.start_time = time.time()
         best_move = 0
         best_value = -np.inf
-        prev_best_move = 0
-        for depth in range(7, max_depth):
-            # print('Elapsed:', self.elapsed_time)
-            self.elapsed_time = time.time() - self.start_time
-            # print('Elapsed:', self.elapsed_time)
-            if self.elapsed_time >= self.time_limit:
-                # print('STOPPED HERE IN LOOP')
-                break
-            else:
-                best_value, best_move = self.alpha_beta_search(node, depth, -np.inf, np.inf, True)
-                best_move = best_move if best_move is not None else prev_best_move
-        # best_value, best_move = self.alpha_beta_search(node, max_depth, -np.inf, np.inf)
+        # prev_best_move = 0
+        # for depth in range(7, max_depth):
+        #     # print('Elapsed:', self.elapsed_time)
+        #     self.elapsed_time = time.time() - self.start_time
+        #     # print('Elapsed:', self.elapsed_time)
+        #     if self.elapsed_time >= self.time_limit:
+        #         # print('STOPPED HERE IN LOOP')
+        #         break
+        #     else:
+        #         best_value, best_move = self.alpha_beta_search(node, depth, -np.inf, np.inf, True)
+        #         best_move = best_move if best_move is not None else prev_best_move  # get the prior best if we don't manage to compute
+        best_value, best_move = self.alpha_beta_search(node, max_depth, -np.inf, np.inf)
         print('Best............', ACTION_TO_STR[best_move])
         print('Utility.........', best_value)
         # print('Time taken:', time.time() - self.start_time)
         return ACTION_TO_STR[best_move]
 
-    def alpha_beta_search(self, node, max_depth, alpha, beta, print_val):
+    def alpha_beta_search(self, node, max_depth, alpha, beta):
 
         self.elapsed_time = time.time() - self.start_time
         if self.elapsed_time >= self.time_limit:
-            # print('STOPPED HERE')
-            if print:
-                print('DEPTH............', max_depth)
-                print('PLAYER...........', 1-node.state.player)
-                print('MOVE.............', node.move)
-                print('SCORE............', self.eval_function(node))
+            # print('---------------- STOPPED HERE BECAUSE OF TIME --------------------')
+            # print(f'At depth={node.depth} From MOVE by P1',
+            #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
+            # print('Next, unsorted P0 at DEPTH', node.depth + 1)
+            # print('SCORE WAS: ', self.eval_function(node))
             return self.eval_function(node), node.move
 
         children = node.compute_and_get_children()
-        if max_depth == 0 or len(children) == 0:
-            if print:
-                print('DEPTH............', max_depth)
-                print('PLAYER...........', 1-node.state.player)
-                print('MOVE.............', node.move)
-                print('SCORE............', self.eval_function(node))
+        if max_depth == 0 or len(node.state.get_fish_positions()) == 0:  # max state or terminal
+            # print(f'At depth={node.depth} From MOVE by P1',
+            #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
+            # print('Next, unsorted P0 at DEPTH', node.depth + 1)
+            # self.visualize_scores(children, 1-node.state.player)
             return self.eval_function(node), node.move if node.move is not None else 0
 
         if node.state.player == 0:
-            # print('Unsorted P0:')
+            # print(f'At depth={node.depth} From MOVE by P1', ACTION_TO_STR[node.move] if node.move is not None else node.move)
+            # print('Next, unsorted P0 at DEPTH', node.depth+1)
             # self.visualize_scores(children, 0)
             # children = self.sort_children(children, 0)
             # print('Sorted P0:')
             # self.visualize_scores(children, 0)
             v, move = -np.inf, np.random.randint(0, 5)
             for child in children:
-                # next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
-                if (child.move == 4 and node.depth == 0) or (node.depth == 0 and child.move == 2):
-                    next_v, next_move = self.alpha_beta_search(child, max_depth - 1, alpha, beta, True)
-                    print('CALLED Ppppppppkknnnksnkksnkksnknsknfnflanal CALLED Ppppppppkknnnksnkksnkksnknsknfnflanal CALLED Ppppppppkknnnksnkksnkksnknsknfnflanal CALLED Ppppppppkknnnksnkksnkksnknsknfnflanal')
-                else:
-                    next_v, next_move = self.alpha_beta_search(child, max_depth - 1, alpha, beta, False)
+                next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
                 if next_v > v:
-                    # print('New alpha:', next_v)
                     v = next_v
                     move = next_move
                 alpha = max([alpha, v])
                 if beta <= alpha:
                     break
         else:
-            # print('Unsorted P1:')
+            # print(f'At depth={node.depth} From MOVE by P0', ACTION_TO_STR[node.move] if node.move is not None else node.move)
+            # print('Next, unsorted P1 at DEPTH', node.depth+1)
             # self.visualize_scores(children, 1)
             # children = self.sort_children(children, 1)
             # print('Sorted P1:')
             # self.visualize_scores(children, 1)
             v, move = np.inf, np.random.randint(0, 5)
             for child in children:
-                # next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
-                next_v, next_move = self.alpha_beta_search(child, max_depth - 1, alpha, beta, print_val)
+                next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
                 if next_v < v:
-                    # print('New beta:', next_v)
                     v = next_v
                     move = next_move
                 beta = min([beta, v])
                 if beta <= alpha:
                     break
-        # print('DEPTH............', max_depth)
-        # print('PLAYER...........', 1-node.state.player)
-        # print('MOVE.............', node.move)
-        # print('SCORE............', self.eval_function(node))
         return v, move
 
     def minimax_decision(self, node, max_depth):
@@ -191,68 +179,81 @@ class PlayerControllerMinimax(PlayerController):
         fish_weight_p0 = 1
         fish_weight_p1 = 1
         score_weight = 1
-        illegal_weight = 10
-        # caught_fish_p0 = fish_scores[caught_fish_type[0]] if caught_fish_type[0] is not None else 0
-        # caught_fish_p0_distance = 19-hook_positions[0][1]
-        # if caught_fish_type[0] is not None:
-        #     fish_weight_p0 = 0.4
-        # caught_fish_p1 = fish_scores[caught_fish_type[1]] if caught_fish_type[1] is not None else 0
-        # caught_fish_p1_distance = 19 - hook_positions[1][1]
-        # if caught_fish_type[1] is not None:
-        #     fish_weight_p1 = 0.4
+        illegal_weight = 0
 
         current_score = self.utility_function(node)
 
         illegal_flag = 1 if hook_positions[0][0] == hook_positions[1][0] else 0
         illegal_flag = illegal_flag if (1-node.state.player) == 0 else -illegal_flag
 
-        # print('MOVE', node.move)
-        # print('SCORE', current_score)
         fish_distance_p0, fish_distance_p1 = 0, 0
         # Calculate the proximity of fish to the hook for both players
         for fish_type, fish_pos in fish_positions.items():
-            distance_p0_x_round_world = 19 - hook_positions[0][0] + fish_pos[0]
+            distance_p0_x_round_world = 20 - hook_positions[0][0] + fish_pos[0]
             distance_p0_x = abs(fish_pos[0] - hook_positions[0][0])
-            distance_p1_x_round_world = 19 - hook_positions[1][0] + fish_pos[0]
+            distance_p1_x_round_world = 20 - hook_positions[1][0] + fish_pos[0]
             distance_p1_x = abs(fish_pos[0] - hook_positions[1][0])
 
             if distance_p0_x_round_world > distance_p0_x:
-                distance_p0 = abs(fish_pos[0] - hook_positions[0][0]) + abs(fish_pos[1] - hook_positions[0][1])
+                distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = False
             else:
                 distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = True
 
             if distance_p1_x_round_world > distance_p1_x:
-                distance_p1 = abs(fish_pos[0] - hook_positions[1][0]) + abs(fish_pos[1] - hook_positions[1][1])
+                distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = False
             else:
                 distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = True
 
-            # print('DISTANCE P0', distance_p0)
-            # distance_p1 = abs(fish_pos[0] - hook_positions[1][0]) + abs(fish_pos[1] - hook_positions[1][1])
-            # print('DISTANCE P1', distance_p1)
-            # distance_p0 = np.sqrt((fish_pos[0] - hook_positions[0][0])**2 + (fish_pos[1] - hook_positions[0][1])**2)
-            # distance_p1 = np.sqrt((fish_pos[0] - hook_positions[1][0])**2 + (fish_pos[1] - hook_positions[1][1])**2)
-            # fish_distance_p0 += fish_scores[fish_type] / (distance_p0 + 1)  # Avoid division by zero, if fish caught give full points
-            # fish_distance_p1 += fish_scores[fish_type] / (distance_p1 + 1)  # Avoid division by zero, if fish caught give full points
             if distance_p0 == 0:
-                # print('CAUGHT FISH P0 IN HOOK')
-                fish_distance_p0 += 1.1*fish_scores[fish_type] / (distance_p0 + 1)
+                fish_distance_p0 += fish_scores[fish_type] - abs(19-fish_pos[1])
             else:
-                fish_distance_p0 += fish_scores[fish_type] / distance_p0
-            if distance_p1 == 0:
-                # print('CAUGHT FISH P1 IN HOOK')
-                fish_distance_p1 += 1.1*fish_scores[fish_type] / (distance_p1 + 1)
-            else:
-                fish_distance_p1 += fish_scores[fish_type] / distance_p1
+                if distance_p1 != 0:  # P1 did not catch a fish
+                    if self.boat_blocking_path(fish_pos, hook_positions, 0, round_world_p0):
+                        fish_distance_p0 += fish_scores[fish_type] / alternative_distance_p0
+                    else:
+                        fish_distance_p0 += fish_scores[fish_type] / distance_p0
+                else:
+                    # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
+                    fish_distance_p0 -= 0.7*fish_scores[fish_type] / abs(19-fish_pos[1])
 
-        # print('Playing.......', node.state.player)
-        # print('p0 fish:', fish_distance_p0)
-        # print('p1 fish:', fish_distance_p1)
+            if distance_p1 == 0:
+                fish_distance_p1 += fish_scores[fish_type] - abs(19-fish_pos[1])
+            else:
+                if distance_p0 != 0:  # P0 did not catch a fish
+                    if self.boat_blocking_path(fish_pos, hook_positions, 1, round_world_p1):
+                        fish_distance_p1 += fish_scores[fish_type] / alternative_distance_p1
+                    else:
+                        fish_distance_p1 += fish_scores[fish_type] / distance_p1
+                else:
+                    # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
+                    fish_distance_p1 -= 0.7*fish_scores[fish_type] / abs(19-fish_pos[1])
+
         result = (score_weight*current_score + fish_weight_p0*fish_distance_p0 - fish_weight_p1*fish_distance_p1 -
                   illegal_weight*illegal_flag)
-
-        # caught_weight*(caught_fish_p0/(caught_fish_p0_distance+1)) - caught_weight*(caught_fish_p1/(caught_fish_p1_distance+1)))
-        # print('total evaluation:', result)
         return result
+
+    def boat_blocking_path(self, fish_pos, hook_positions, player_id, round_world):
+        player_x = hook_positions[player_id][0]
+        opponent_x = hook_positions[1-player_id][0]
+        if not round_world:
+            if player_x > opponent_x:
+                return fish_pos[0] <= opponent_x
+            else:
+                return fish_pos[0] >= opponent_x
+        else:
+            if player_x > opponent_x:
+                return fish_pos[0] >= opponent_x
+            else:
+                return fish_pos[0] <= opponent_x
+
 
     def utility_function(self, node):
         scores = node.state.get_player_scores()
@@ -266,6 +267,8 @@ class PlayerControllerMinimax(PlayerController):
         return sorted_children
 
     def visualize_scores(self, nodes, player):
+        score = [self.utility_function(child) for child in nodes]
         values = [self.eval_function(child) for child in nodes]
+        print('Scores:', score)
         print('Player:', player, values)
         return
