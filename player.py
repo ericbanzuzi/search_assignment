@@ -49,7 +49,7 @@ class PlayerControllerMinimax(PlayerController):
             node = Node(message=msg, player=0)
 
             # Possible next moves: "stay", "left", "right", "up", "down"
-            max_depth = 7
+            max_depth = 2
             best_move = self.search_best_next_move(node=node, max_depth=max_depth)
             # Execute next action
             self.sender({"action": best_move, "search_time": None})
@@ -64,9 +64,6 @@ class PlayerControllerMinimax(PlayerController):
         :return: either "stay", "left", "right", "up" or "down"
         :rtype: str
         """
-        # EDIT THIS METHOD TO RETURN BEST NEXT POSSIBLE MODE USING MINIMAX ###
-        # random_move = random.randrange(5)
-        # return ACTION_TO_STR[random_move]
         self.elapsed_time = 0
         self.start_time = time.time()
         best_move = 0
@@ -99,20 +96,16 @@ class PlayerControllerMinimax(PlayerController):
             # print('SCORE WAS: ', self.eval_function(node))
             return self.eval_function(node), node.move
 
-        children = node.compute_and_get_children()
-        if max_depth == 0 or len(node.state.get_fish_positions()) == 0:  # max state or terminal
+        if max_depth == 0 or (len(node.children) == 0 and node.parent is not None):  # max state or terminal
             # print(f'At depth={node.depth} From MOVE by P1',
             #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
             # print('Next, unsorted P0 at DEPTH', node.depth + 1)
-            # self.visualize_scores(children, 1-node.state.player)
             return self.eval_function(node), node.move if node.move is not None else 0
 
+        children = node.compute_and_get_children()
         if node.state.player == 0:
             # print(f'At depth={node.depth} From MOVE by P1', ACTION_TO_STR[node.move] if node.move is not None else node.move)
             # print('Next, unsorted P0 at DEPTH', node.depth+1)
-            # self.visualize_scores(children, 0)
-            # children = self.sort_children(children, 0)
-            # print('Sorted P0:')
             # self.visualize_scores(children, 0)
             v, move = -np.inf, np.random.randint(0, 5)
             for child in children:
@@ -126,9 +119,6 @@ class PlayerControllerMinimax(PlayerController):
         else:
             # print(f'At depth={node.depth} From MOVE by P0', ACTION_TO_STR[node.move] if node.move is not None else node.move)
             # print('Next, unsorted P1 at DEPTH', node.depth+1)
-            # self.visualize_scores(children, 1)
-            # children = self.sort_children(children, 1)
-            # print('Sorted P1:')
             # self.visualize_scores(children, 1)
             v, move = np.inf, np.random.randint(0, 5)
             for child in children:
