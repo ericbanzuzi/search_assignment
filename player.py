@@ -49,7 +49,7 @@ class PlayerControllerMinimax(PlayerController):
             node = Node(message=msg, player=0)
 
             # Possible next moves: "stay", "left", "right", "up", "down"
-            max_depth = 2
+            max_depth = 4
             best_move = self.search_best_next_move(node=node, max_depth=max_depth)
             # Execute next action
             self.sender({"action": best_move, "search_time": None})
@@ -86,6 +86,10 @@ class PlayerControllerMinimax(PlayerController):
         return ACTION_TO_STR[best_move]
 
     def alpha_beta_search(self, node, max_depth, alpha, beta):
+        print('At depth=', node.depth)
+
+        if max_depth != 0:
+            _ = node.compute_and_get_children()
 
         self.elapsed_time = time.time() - self.start_time
         if self.elapsed_time >= self.time_limit:
@@ -94,21 +98,21 @@ class PlayerControllerMinimax(PlayerController):
             #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
             # print('Next, unsorted P0 at DEPTH', node.depth + 1)
             # print('SCORE WAS: ', self.eval_function(node))
-            return self.eval_function(node), node.move
+            return self.heuristic_simple(node), node.move
 
-        if max_depth == 0 or (len(node.children) == 0 and node.parent is not None):  # max state or terminal
+        if max_depth == 0 or (len(node.children) == 0 and node.parent is not None):  # max depth or terminal
             # print(f'At depth={node.depth} From MOVE by P1',
             #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
             # print('Next, unsorted P0 at DEPTH', node.depth + 1)
-            return self.eval_function(node), node.move if node.move is not None else 0
+            return self.heuristic_simple(node), node.move if node.move is not None else 0
 
-        children = node.compute_and_get_children()
+        # children = node.compute_and_get_children()
         if node.state.player == 0:
             # print(f'At depth={node.depth} From MOVE by P1', ACTION_TO_STR[node.move] if node.move is not None else node.move)
             # print('Next, unsorted P0 at DEPTH', node.depth+1)
             # self.visualize_scores(children, 0)
             v, move = -np.inf, np.random.randint(0, 5)
-            for child in children:
+            for child in node.children:
                 next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
                 if next_v > v:
                     v = next_v
@@ -121,7 +125,7 @@ class PlayerControllerMinimax(PlayerController):
             # print('Next, unsorted P1 at DEPTH', node.depth+1)
             # self.visualize_scores(children, 1)
             v, move = np.inf, np.random.randint(0, 5)
-            for child in children:
+            for child in node.children:
                 next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
                 if next_v < v:
                     v = next_v
@@ -160,6 +164,77 @@ class PlayerControllerMinimax(PlayerController):
         for child in children:
             v = min([v, self.max_value(child, max_depth)])
         return v
+
+    def heuristic_simple(self, node):
+        state = node.state
+        fish_positions = state.get_fish_positions()
+        fish_scores = state.get_fish_scores()
+        hook_positions = state.get_hook_positions()
+
+        current_score = self.utility_function(node)
+
+        fish_distance_p0, fish_distance_p1 = 0, 0
+        # Calculate the proximity of fish to the hook for both players
+        for fish_type, fish_pos in fish_positions.items():
+            distance_p0_x_round_world = 20 - hook_positions[0][0] + fish_pos[0]
+            distance_p0_x = abs(fish_pos[0] - hook_positions[0][0])
+            distance_p1_x_round_world = 20 - hook_positions[1][0] + fish_pos[0]
+            distance_p1_x = abs(fish_pos[0] - hook_positions[1][0])
+
+            if distance_p0_x_round_world > distance_p0_x:
+                distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = False
+            else:
+                distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = True
+
+            if distance_p1_x_round_world > distance_p1_x:
+                distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = False
+            else:
+                distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = True
+
+            if distance_p0 == 0:
+                fish_distance_p0 += fish_scores[fish_type]
+            else:
+                fish_distance_p0 += fish_scores[fish_type] / distance_p0
+
+            if distance_p1 == 0:
+                fish_distance_p1 += fish_scores[fish_type]
+            else:
+                fish_distance_p1 += fish_scores[fish_type] / distance_p1
+
+            # if distance_p0 == 0:
+            #     fish_distance_p0 += fish_scores[fish_type] - abs(19 - fish_pos[1])
+            # else:
+            #     if distance_p1 != 0:  # P1 did not catch a fish
+            #         if self.boat_blocking_path(fish_pos, hook_positions, 0, round_world_p0):
+            #             fish_distance_p0 += fish_scores[fish_type] / alternative_distance_p0
+            #         else:
+            #             fish_distance_p0 += fish_scores[fish_type] / distance_p0
+            #     else:
+            #         # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
+            #         fish_distance_p0 -= 0.7 * fish_scores[fish_type] / abs(19 - fish_pos[1])
+            #
+            # if distance_p1 == 0:
+            #     fish_distance_p1 += fish_scores[fish_type] - abs(19 - fish_pos[1])
+            # else:
+            #     if distance_p0 != 0:  # P0 did not catch a fish
+            #         if self.boat_blocking_path(fish_pos, hook_positions, 1, round_world_p1):
+            #             fish_distance_p1 += fish_scores[fish_type] / alternative_distance_p1
+            #         else:
+            #             fish_distance_p1 += fish_scores[fish_type] / distance_p1
+            #     else:
+            #         # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
+            #         fish_distance_p1 -= 0.7 * fish_scores[fish_type] / abs(19 - fish_pos[1] + 1)
+
+        result = current_score + fish_distance_p0 - fish_distance_p1
+        return result
 
     def eval_function(self, node):
         state = node.state
@@ -215,7 +290,7 @@ class PlayerControllerMinimax(PlayerController):
                     fish_distance_p0 -= 0.7*fish_scores[fish_type] / abs(19-fish_pos[1])
 
             if distance_p1 == 0:
-                fish_distance_p1 += fish_scores[fish_type] - abs(19-fish_pos[1])
+                fish_distance_p1 += fish_scores[fish_type] - abs(19-fish_pos[1] + 1)
             else:
                 if distance_p0 != 0:  # P0 did not catch a fish
                     if self.boat_blocking_path(fish_pos, hook_positions, 1, round_world_p1):
@@ -224,7 +299,7 @@ class PlayerControllerMinimax(PlayerController):
                         fish_distance_p1 += fish_scores[fish_type] / distance_p1
                 else:
                     # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
-                    fish_distance_p1 -= 0.7*fish_scores[fish_type] / abs(19-fish_pos[1])
+                    fish_distance_p1 -= 0.7*fish_scores[fish_type] / abs(19-fish_pos[1] + 1)
 
         result = (score_weight*current_score + fish_weight_p0*fish_distance_p0 - fish_weight_p1*fish_distance_p1 -
                   illegal_weight*illegal_flag)
