@@ -92,9 +92,6 @@ class PlayerControllerMinimax(PlayerController):
             _ = node.compute_and_get_children()
 
         if max_depth == 0 or (len(node.children) == 0 and node.parent is not None):  # max depth or terminal
-            # print(f'At depth={node.depth} From MOVE by P1',
-            #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
-            # print('Next, unsorted P0 at DEPTH', node.depth + 1)
             return self.heuristic_simple(node), node.move if node.move is not None else 0
 
         # children = node.compute_and_get_children()
