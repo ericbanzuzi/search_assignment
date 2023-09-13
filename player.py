@@ -91,15 +91,6 @@ class PlayerControllerMinimax(PlayerController):
         if max_depth != 0:
             _ = node.compute_and_get_children()
 
-        self.elapsed_time = time.time() - self.start_time
-        if self.elapsed_time >= self.time_limit:
-            # print('---------------- STOPPED HERE BECAUSE OF TIME --------------------')
-            # print(f'At depth={node.depth} From MOVE by P1',
-            #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
-            # print('Next, unsorted P0 at DEPTH', node.depth + 1)
-            # print('SCORE WAS: ', self.eval_function(node))
-            return self.heuristic_simple(node), node.move
-
         if max_depth == 0 or (len(node.children) == 0 and node.parent is not None):  # max depth or terminal
             # print(f'At depth={node.depth} From MOVE by P1',
             #       ACTION_TO_STR[node.move] if node.move is not None else node.move)
