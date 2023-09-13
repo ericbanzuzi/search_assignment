@@ -49,7 +49,7 @@ class PlayerControllerMinimax(PlayerController):
             node = Node(message=msg, player=0)
 
             # Possible next moves: "stay", "left", "right", "up", "down"
-            max_depth = 4
+            max_depth = 5
             best_move = self.search_best_next_move(node=node, max_depth=max_depth)
             # Execute next action
             self.sender({"action": best_move, "search_time": None})
@@ -66,27 +66,16 @@ class PlayerControllerMinimax(PlayerController):
         """
         self.elapsed_time = 0
         self.start_time = time.time()
-        best_move = 0
-        best_value = -np.inf
-        # prev_best_move = 0
-        # for depth in range(7, max_depth):
-        #     # print('Elapsed:', self.elapsed_time)
-        #     self.elapsed_time = time.time() - self.start_time
-        #     # print('Elapsed:', self.elapsed_time)
-        #     if self.elapsed_time >= self.time_limit:
-        #         # print('STOPPED HERE IN LOOP')
-        #         break
-        #     else:
-        #         best_value, best_move = self.alpha_beta_search(node, depth, -np.inf, np.inf, True)
-        #         best_move = best_move if best_move is not None else prev_best_move  # get the prior best if we don't manage to compute
-        best_value, best_move = self.alpha_beta_search(node, max_depth, -np.inf, np.inf)
+        best_value, best_move = self.alpha_beta_search(node, max_depth, -np.inf, np.inf, 0)
         print('Best............', ACTION_TO_STR[best_move])
         print('Utility.........', best_value)
-        # print('Time taken:', time.time() - self.start_time)
         return ACTION_TO_STR[best_move]
 
-    def alpha_beta_search(self, node, max_depth, alpha, beta):
-        print('At depth=', node.depth)
+    def alpha_beta_search(self, node, max_depth, alpha, beta, player):
+
+        self.elapsed_time = time.time() - self.start_time
+        if self.elapsed_time >= self.time_limit:
+            return self.heuristic_simple(node), node.move
 
         if max_depth != 0:
             _ = node.compute_and_get_children()
@@ -95,13 +84,10 @@ class PlayerControllerMinimax(PlayerController):
             return self.heuristic_simple(node), node.move if node.move is not None else 0
 
         # children = node.compute_and_get_children()
-        if node.state.player == 0:
-            # print(f'At depth={node.depth} From MOVE by P1', ACTION_TO_STR[node.move] if node.move is not None else node.move)
-            # print('Next, unsorted P0 at DEPTH', node.depth+1)
-            # self.visualize_scores(children, 0)
+        if player == 0:
             v, move = -np.inf, np.random.randint(0, 5)
             for child in node.children:
-                next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
+                next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta, 1)
                 if next_v > v:
                     v = next_v
                     move = next_move
@@ -109,12 +95,9 @@ class PlayerControllerMinimax(PlayerController):
                 if beta <= alpha:
                     break
         else:
-            # print(f'At depth={node.depth} From MOVE by P0', ACTION_TO_STR[node.move] if node.move is not None else node.move)
-            # print('Next, unsorted P1 at DEPTH', node.depth+1)
-            # self.visualize_scores(children, 1)
             v, move = np.inf, np.random.randint(0, 5)
             for child in node.children:
-                next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta)
+                next_v, next_move = self.alpha_beta_search(child, max_depth-1, alpha, beta, 0)
                 if next_v < v:
                     v = next_v
                     move = next_move
@@ -122,36 +105,6 @@ class PlayerControllerMinimax(PlayerController):
                 if beta <= alpha:
                     break
         return v, move
-
-    def minimax_decision(self, node, max_depth):
-        v, action = -np.inf, None
-        children = node.compute_and_get_children()
-        for child in children:
-            result = self.min_value(child, max_depth)
-            if result > v:
-                v = result
-                action = child
-        return action.move
-
-    def max_value(self, node, max_depth):
-        # check terminal state
-        children = node.compute_and_get_children()
-        if len(children) == 0 or node.depth == max_depth:
-            return self.eval_function(node)
-        v = -np.inf
-        for child in children:
-            v = max([v, self.min_value(child, max_depth)])
-        return v
-
-    def min_value(self, node, max_depth):
-        # check terminal state
-        children = node.compute_and_get_children()
-        if len(children) == 0 or node.depth == max_depth:
-            return self.eval_function(node)
-        v = np.inf
-        for child in children:
-            v = min([v, self.max_value(child, max_depth)])
-        return v
 
     def heuristic_simple(self, node):
         state = node.state
@@ -221,7 +174,7 @@ class PlayerControllerMinimax(PlayerController):
             #         # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
             #         fish_distance_p1 -= 0.7 * fish_scores[fish_type] / abs(19 - fish_pos[1] + 1)
 
-        result = current_score + fish_distance_p0 - fish_distance_p1
+        result = current_score + fish_distance_p0
         return result
 
     def eval_function(self, node):
@@ -307,21 +260,6 @@ class PlayerControllerMinimax(PlayerController):
             else:
                 return fish_pos[0] <= opponent_x
 
-
     def utility_function(self, node):
         scores = node.state.get_player_scores()
         return scores[0] - scores[1]
-
-    def sort_children(self, children, player):
-        if player == 0:
-            sorted_children = sorted(children, key=lambda child: self.eval_function(child), reverse=True)
-        else:
-            sorted_children = sorted(children, key=lambda child: self.eval_function(child), reverse=False)
-        return sorted_children
-
-    def visualize_scores(self, nodes, player):
-        score = [self.utility_function(child) for child in nodes]
-        values = [self.eval_function(child) for child in nodes]
-        print('Scores:', score)
-        print('Player:', player, values)
-        return
