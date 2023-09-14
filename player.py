@@ -31,7 +31,9 @@ class PlayerControllerMinimax(PlayerController):
         super(PlayerControllerMinimax, self).__init__()
         self.start_time = None
         self.elapsed_time = 0
-        self.time_limit = 68*1e-3  # in seconds
+        self.time_limit = 30*1e-3  # in seconds
+        self.random_values_M = None
+        self.transposition_table = {}
 
     def player_loop(self):
         """
@@ -47,9 +49,8 @@ class PlayerControllerMinimax(PlayerController):
 
             # Create the root node of the game tree
             node = Node(message=msg, player=0)
-
             # Possible next moves: "stay", "left", "right", "up", "down"
-            max_depth = 5
+            max_depth = 7
             best_move = self.search_best_next_move(node=node, max_depth=max_depth)
             # Execute next action
             self.sender({"action": best_move, "search_time": None})
@@ -65,23 +66,46 @@ class PlayerControllerMinimax(PlayerController):
         :rtype: str
         """
         self.elapsed_time = 0
+        self.init_zobrist()
+        self.transposition_table = {}
         self.start_time = time.time()
-        best_value, best_move = self.alpha_beta_search(node, max_depth, -np.inf, np.inf, 0)
-        print('Best............', ACTION_TO_STR[best_move])
-        print('Utility.........', best_value)
+        prev_best_value, prev_best_move, best_move = 0, 0, 0
+        for i in range(1, max_depth+1):
+            print('Iterative stuff:', i)
+            self.elapsed_time = time.time() - self.start_time
+            if self.elapsed_time < self.time_limit:
+                best_value, best_move = self.alpha_beta_search(node, max_depth, -np.inf, np.inf, 0)
+                # if best_value < prev_best_value:
+                #     best_value = prev_best_value
+                #     best_move = prev_best_move
+                # else:
+                #     prev_best_move = best_move
+                #     prev_best_value = best_value
+        # best_value, best_move = self.alpha_beta_search(node, max_depth, -np.inf, np.inf, 0)
         return ACTION_TO_STR[best_move]
 
     def alpha_beta_search(self, node, max_depth, alpha, beta, player):
+        # print('At depth=', node.depth)
+        # if node.depth == 5:
+        #     print('Score at depth=5:', self.heuristic_simple(node))
+        game_state = self.hash_zobrist(node)
+        if game_state in self.transposition_table.keys():
+            return self.transposition_table[game_state][0], self.transposition_table[game_state][1]
 
         self.elapsed_time = time.time() - self.start_time
         if self.elapsed_time >= self.time_limit:
-            return self.heuristic_simple(node), node.move
+            score = self.heuristic_simple(node)
+            self.transposition_table[game_state] = (score, node.move)
+            return score, node.move
 
         if max_depth != 0:
             _ = node.compute_and_get_children()
+            node.children = self.sort_children(node, player)
 
         if max_depth == 0 or (len(node.children) == 0 and node.parent is not None):  # max depth or terminal
-            return self.heuristic_simple(node), node.move if node.move is not None else 0
+            score = self.heuristic_simple(node)
+            self.transposition_table[game_state] = (score, node.move if node.move is not None else 0)
+            return score, node.move if node.move is not None else 0
 
         # children = node.compute_and_get_children()
         if player == 0:
@@ -104,95 +128,29 @@ class PlayerControllerMinimax(PlayerController):
                 beta = min([beta, v])
                 if beta <= alpha:
                     break
+        self.transposition_table[game_state] = (v, move)
         return v, move
 
     def heuristic_simple(self, node):
+
+        state_key = self.hash_zobrist(node)
+        if state_key in self.transposition_table.keys():
+            return self.transposition_table[state_key][0]
+
         state = node.state
         fish_positions = state.get_fish_positions()
         fish_scores = state.get_fish_scores()
         hook_positions = state.get_hook_positions()
-
-        current_score = self.utility_function(node)
-
-        fish_distance_p0, fish_distance_p1 = 0, 0
-        # Calculate the proximity of fish to the hook for both players
-        for fish_type, fish_pos in fish_positions.items():
-            distance_p0_x_round_world = 20 - hook_positions[0][0] + fish_pos[0]
-            distance_p0_x = abs(fish_pos[0] - hook_positions[0][0])
-            distance_p1_x_round_world = 20 - hook_positions[1][0] + fish_pos[0]
-            distance_p1_x = abs(fish_pos[0] - hook_positions[1][0])
-
-            if distance_p0_x_round_world > distance_p0_x:
-                distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
-                alternative_distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
-                round_world_p0 = False
-            else:
-                distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
-                alternative_distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
-                round_world_p0 = True
-
-            if distance_p1_x_round_world > distance_p1_x:
-                distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
-                alternative_distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
-                round_world_p1 = False
-            else:
-                distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
-                alternative_distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
-                round_world_p1 = True
-
-            if distance_p0 == 0:
-                fish_distance_p0 += fish_scores[fish_type]
-            else:
-                fish_distance_p0 += fish_scores[fish_type] / distance_p0
-
-            if distance_p1 == 0:
-                fish_distance_p1 += fish_scores[fish_type]
-            else:
-                fish_distance_p1 += fish_scores[fish_type] / distance_p1
-
-            # if distance_p0 == 0:
-            #     fish_distance_p0 += fish_scores[fish_type] - abs(19 - fish_pos[1])
-            # else:
-            #     if distance_p1 != 0:  # P1 did not catch a fish
-            #         if self.boat_blocking_path(fish_pos, hook_positions, 0, round_world_p0):
-            #             fish_distance_p0 += fish_scores[fish_type] / alternative_distance_p0
-            #         else:
-            #             fish_distance_p0 += fish_scores[fish_type] / distance_p0
-            #     else:
-            #         # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
-            #         fish_distance_p0 -= 0.7 * fish_scores[fish_type] / abs(19 - fish_pos[1])
-            #
-            # if distance_p1 == 0:
-            #     fish_distance_p1 += fish_scores[fish_type] - abs(19 - fish_pos[1])
-            # else:
-            #     if distance_p0 != 0:  # P0 did not catch a fish
-            #         if self.boat_blocking_path(fish_pos, hook_positions, 1, round_world_p1):
-            #             fish_distance_p1 += fish_scores[fish_type] / alternative_distance_p1
-            #         else:
-            #             fish_distance_p1 += fish_scores[fish_type] / distance_p1
-            #     else:
-            #         # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
-            #         fish_distance_p1 -= 0.7 * fish_scores[fish_type] / abs(19 - fish_pos[1] + 1)
-
-        result = current_score + fish_distance_p0
-        return result
-
-    def eval_function(self, node):
-        state = node.state
-        fish_positions = state.get_fish_positions()
-        fish_scores = state.get_fish_scores()
-        hook_positions = state.get_hook_positions()
-        fish_weight_p0 = 1
-        fish_weight_p1 = 1
+        # TODO: tune
+        catch_weight = 1
         score_weight = 1
-        illegal_weight = 0
+        distance_weight = 1
 
         current_score = self.utility_function(node)
 
-        illegal_flag = 1 if hook_positions[0][0] == hook_positions[1][0] else 0
-        illegal_flag = illegal_flag if (1-node.state.player) == 0 else -illegal_flag
-
         fish_distance_p0, fish_distance_p1 = 0, 0
+        caught_fish = 0
+
         # Calculate the proximity of fish to the hook for both players
         for fish_type, fish_pos in fish_positions.items():
             distance_p0_x_round_world = 20 - hook_positions[0][0] + fish_pos[0]
@@ -201,49 +159,35 @@ class PlayerControllerMinimax(PlayerController):
             distance_p1_x = abs(fish_pos[0] - hook_positions[1][0])
 
             if distance_p0_x_round_world > distance_p0_x:
+                # The fish is reachable for p_0 faster by going straight
                 distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
                 alternative_distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
                 round_world_p0 = False
             else:
+                # The fish is reachable faster by going around the world
                 distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
                 alternative_distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
                 round_world_p0 = True
 
             if distance_p1_x_round_world > distance_p1_x:
+                # The fish is reachable for p_1 faster by going straight
                 distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
-                alternative_distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
-                round_world_p1 = False
             else:
+                # The fish is reachable faster for p_1 by going around the world
                 distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
-                alternative_distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
-                round_world_p1 = True
 
             if distance_p0 == 0:
-                fish_distance_p0 += fish_scores[fish_type] - abs(19-fish_pos[1])
+                # If fish is caught
+                caught_fish = fish_scores[fish_type]
             else:
-                if distance_p1 != 0:  # P1 did not catch a fish
+                if distance_p1 != 0:
+                    # If fish is not caught by p_1
                     if self.boat_blocking_path(fish_pos, hook_positions, 0, round_world_p0):
                         fish_distance_p0 += fish_scores[fish_type] / alternative_distance_p0
                     else:
                         fish_distance_p0 += fish_scores[fish_type] / distance_p0
-                else:
-                    # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
-                    fish_distance_p0 -= 0.7*fish_scores[fish_type] / abs(19-fish_pos[1])
 
-            if distance_p1 == 0:
-                fish_distance_p1 += fish_scores[fish_type] - abs(19-fish_pos[1] + 1)
-            else:
-                if distance_p0 != 0:  # P0 did not catch a fish
-                    if self.boat_blocking_path(fish_pos, hook_positions, 1, round_world_p1):
-                        fish_distance_p1 += fish_scores[fish_type] / alternative_distance_p1
-                    else:
-                        fish_distance_p1 += fish_scores[fish_type] / distance_p1
-                else:
-                    # TODO: TUNE THIS SO THAT RIGHT IS PREFERRED OVER STAY/UP
-                    fish_distance_p1 -= 0.7*fish_scores[fish_type] / abs(19-fish_pos[1] + 1)
-
-        result = (score_weight*current_score + fish_weight_p0*fish_distance_p0 - fish_weight_p1*fish_distance_p1 -
-                  illegal_weight*illegal_flag)
+        result = score_weight*current_score + distance_weight*fish_distance_p0 + catch_weight*caught_fish
         return result
 
     def boat_blocking_path(self, fish_pos, hook_positions, player_id, round_world):
@@ -261,5 +205,45 @@ class PlayerControllerMinimax(PlayerController):
                 return fish_pos[0] <= opponent_x
 
     def utility_function(self, node):
+        # TODO: change to take into consideration winning and loosing states
         scores = node.state.get_player_scores()
         return scores[0] - scores[1]
+
+    def sort_children_old(self, node, player):
+        if player == 0:
+            sorted_children = sorted(node.children, key=lambda child: self.heuristic_simple(child), reverse=True)
+        else:
+            sorted_children = sorted(node.children, key=lambda child: self.heuristic_simple(child), reverse=False)
+        return sorted_children
+
+    def sort_children(self, node, player):
+        if node.depth == 0 or len(self.transposition_table) == 0:
+            sorted_children = sorted(node.children, key=lambda child: self.heuristic_simple(child), reverse=True)
+        else:
+            game_state = self.hash_zobrist(node)
+            if game_state == 21804:
+                print(node.depth)
+                print(node.children)
+                print(node.move)
+            print(self.transposition_table)
+            if player == 0:
+                sorted_children = sorted(node.children, key=lambda child: self.transposition_table[game_state][0], reverse=True)
+            else:
+                sorted_children = sorted(node.children, key=lambda child: self.transposition_table[game_state][0], reverse=False)
+        return sorted_children
+
+    def init_zobrist(self):
+        np.random.seed(42)
+        self.random_values_M = np.random.randint(1000, size=(20, 20))
+
+    def hash_zobrist(self, node):
+        fish_scores = node.state.get_fish_scores()
+        player_positions = node.state.get_hook_positions()
+        fish_positions = node.state.get_fish_positions()
+        p0, p1 = 1, 2
+
+        state_key = self.random_values_M[player_positions[0][0]][player_positions[0][1]] * p0
+        state_key += self.random_values_M[player_positions[1][0]][player_positions[1][1]] * p1
+        for fish_type, fish_pos in fish_positions.items():
+            state_key += self.random_values_M[fish_pos[0]][fish_pos[1]] * fish_scores[fish_type]
+        return state_key
