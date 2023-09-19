@@ -50,7 +50,7 @@ class PlayerControllerMinimax(PlayerController):
             # Create the root node of the game tree
             node = Node(message=msg, player=0)
             # Possible next moves: "stay", "left", "right", "up", "down"
-            max_depth = 6
+            max_depth = 8
             best_move = self.search_best_next_move(node=node, max_depth=max_depth)
             # Execute next action
             self.sender({"action": best_move, "search_time": None})

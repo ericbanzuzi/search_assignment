@@ -32,9 +32,10 @@ class PlayerControllerMinimax(PlayerController):
         super(PlayerControllerMinimax, self).__init__()
         self.start_time = None
         self.elapsed_time = 0
-        self.time_limit = 70 * 1e-3  # in seconds
+        self.time_limit = 65 * 1e-3  # in seconds
         self.random_values_M = None
         self.transposition_table = {}
+        self.timeout = False
 
     def player_loop(self):
         """
@@ -52,47 +53,11 @@ class PlayerControllerMinimax(PlayerController):
             node = Node(message=msg, player=0)
 
             # Possible next moves: "stay", "left", "right", "up", "down"
-            max_depth = 4
-            best_move = self.search_best_next_move(initial_tree_node=node, depth=max_depth)
+            max_depth = 7
+            best_move = self.search_best_next_move_ids(initial_tree_node=node, depth=max_depth)
 
             # Execute next action
             self.sender({"action": best_move, "search_time": None})
-
-    def search_best_next_move(self, initial_tree_node, depth):
-        """
-        Use minimax (and extensions) to find best possible next move for player 0 (green boat)
-        :param initial_tree_node: Initial game tree node
-        :param depth: depth of the search
-        :type initial_tree_node: game_tree.Node
-            (see the Node class in game_tree.py for more information!)
-        :return: either "stay", "left", "right", "up" or "down"
-        :rtype: str
-        """
-
-        # EDIT THIS METHOD TO RETURN BEST NEXT POSSIBLE MODE USING MINIMAX ###
-
-        # NOTE: Don't forget to initialize the children of the current node
-        #       with its compute_and_get_children() method!
-        self.elapsed_time = 0
-        self.start_time = time.time()
-        _ = initial_tree_node.compute_and_get_children()
-        # children = sorted(initial_tree_node.children, key=lambda child: self.heuristic_simple(child))
-        moves = [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf]
-        alpha, beta = -np.inf, np.inf
-        for i, child in enumerate(initial_tree_node.children):
-            self.elapsed_time = time.time() - self.start_time
-            if self.elapsed_time < self.time_limit:
-                value = self.alphabeta(child, depth - 1, alpha, beta, 1)
-                moves[i] = value
-                alpha = np.max([value, alpha])
-            else:
-                break
-        # print(moves)
-        highest_indices = np.where(moves == np.max(moves))[0]
-        if len(highest_indices) >= 2:
-            return ACTION_TO_STR[random.choice(highest_indices)]
-        else:
-            return ACTION_TO_STR[np.argmax(moves)]
 
     def search_best_next_move_ids(self, initial_tree_node, depth):
         """
@@ -107,49 +72,130 @@ class PlayerControllerMinimax(PlayerController):
         # NOTE: Don't forget to initialize the children of the current node
         #       with its compute_and_get_children() method!
         self.elapsed_time = 0
+        self.timeout = False
         self.start_time = time.time()
-        _ = initial_tree_node.compute_and_get_children()
+        self.init_zobrist()
+        self.transposition_table = {}
+
+        children = initial_tree_node.compute_and_get_children()
+        if len(children) == 1:  # a fish was caught and the only option is up
+            return ACTION_TO_STR[children[0].move]
+
         moves = [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf]
         best_move = None
         for max_depth in range(1, depth+1):
-            print('IDS=', max_depth)
+            # print('IDS=', max_depth)
             self.elapsed_time = time.time() - self.start_time
             if self.elapsed_time < self.time_limit:
-                move = self.search_best_next_move(initial_tree_node, max_depth)
-                best_move = move
-                # alpha, beta = -np.inf, np.inf
-                # children = self.sort_children(initial_tree_node, moves)
-                # print(moves)
-                # print([node.move for node in children])
-                # for i, child in enumerate(children):
-                #     value = self.alphabeta(child, max_depth - 1, alpha, beta, 1)
-                #     moves[i] = value
-                #     alpha = np.max([value, alpha])
-                #
-                # highest_indices = np.where(moves == np.max(moves))[0]
-                # if len(highest_indices) >= 2:
-                #     best_move = ACTION_TO_STR[random.choice(highest_indices)]
-                # else:
-                #     best_move = ACTION_TO_STR[np.argmax(moves)]
+                move, temp_moves = self.search_at_depth(initial_tree_node, max_depth, moves.copy(), best_move)
+                if not self.timeout:
+                    moves = temp_moves
+                    best_move = move
+                    # print('Moves so far:', moves)
+                    # print('Best so far:', best_move)
+            else:
+                # print('COULD NOT SEARCH')
+                break
+
+        # print('At return:', moves)
+        # print('Move', best_move)
+        return best_move
+
+    def search_best_next_move(self, initial_tree_node, depth):
+        """
+        Use minimax with alphabeta pruning to find the best possible next move for player 0 (green boat)
+        :param initial_tree_node: Initial game tree node
+        :param depth: depth of the search
+        :type initial_tree_node: game_tree.Node
+            (see the Node class in game_tree.py for more information!)
+        :return: either "stay", "left", "right", "up" or "down"
+        :rtype: str
+        """
+        # initialize timer
+        self.elapsed_time = 0
+        self.start_time = time.time()
+
+        children = initial_tree_node.compute_and_get_children()
+        # check if a fish was caught and the only option is up -> return it
+        if len(children) == 1:
+            return ACTION_TO_STR[children[0].move]
+
+        # initialize the values for moves, alpha and beta
+        moves = [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf]
+        alpha, beta = -np.inf, np.inf
+        for child in initial_tree_node.children:
+            # if there is time, search the next child, else stop the search
+            self.elapsed_time = time.time() - self.start_time
+            if self.elapsed_time < self.time_limit:
+                value = self.alphabeta(child, depth - 1, alpha, beta, 1)
+                moves[child.move] = value
+                alpha = np.max([value, alpha])
             else:
                 break
 
-        #print(moves)
-        return best_move
+        highest_indices = np.where(moves == np.max(moves))[0]
+        if len(highest_indices) >= 2:
+            return ACTION_TO_STR[random.choice(highest_indices)]
+        else:
+            return ACTION_TO_STR[np.argmax(moves)]
+
+    def search_at_depth(self, initial_tree_node, depth, old_moves, move):
+        """
+        Use alphabeta for certain depth to find the best possible next move for player 0 (green boat)
+        :param initial_tree_node: Initial game tree node
+        :param depth: depth of the search
+        :type initial_tree_node: game_tree.Node
+            (see the Node class in game_tree.py for more information!)
+        :return: either "stay", "left", "right", "up" or "down"
+        :rtype: str
+        """
+
+        children = initial_tree_node.compute_and_get_children()
+        # check if a fish was caught and the only option is up -> return it
+        if len(children) == 1:
+            return ACTION_TO_STR[children[0].move], old_moves
+
+        children = self.sort_children(initial_tree_node, old_moves)  # more options than up
+        moves = old_moves.copy()  # keep track of old moves
+        alpha, beta = -np.inf, np.inf
+        for child in children:
+            # if there is time, search the next child, else stop the search
+            self.elapsed_time = time.time() - self.start_time
+            if self.elapsed_time < self.time_limit:
+                value = self.alphabeta(child, depth - 1, alpha, beta, 1)
+                moves[child.move] = value
+                alpha = np.max([value, alpha])
+            else:
+                self.timeout = True  # keep track of when we have timed out
+                break
+
+        highest_indices = np.where(moves == np.max(moves))[0]
+        # if there are many possible best moves, and we haven't decided on a move before, pick randomly
+        if len(highest_indices) >= 2 and move is None:
+            return ACTION_TO_STR[random.choice(highest_indices)], moves
+        # if there are multiple positions giving the same score but a search with a lower depth had only one best move
+        # stay with that
+        elif len(highest_indices) >= 2 and move is not None:
+            return move, old_moves
+        else:
+            return ACTION_TO_STR[np.argmax(moves)], moves
 
     def alphabeta(self, node, depth, alpha, beta, player):
-
+        # check if we still have time to explore, if not -> return
         self.elapsed_time = time.time() - self.start_time
         if self.elapsed_time >= self.time_limit:
-            # self.transposition_table[game_state] = (score, node.move)
+            self.timeout = True if depth != 0 else False
             return self.heuristic_simple(node)
 
+        # not at maximum depth? -> generate children
         if depth != 0:
             _ = node.compute_and_get_children()
 
+        # at maximum depth or terminal state?
         if depth == 0 or len(node.children) == 0:
             return self.heuristic_simple(node)
 
+        # perform alpha beta minimax search
         elif player == 0:
             v = - np.inf
             for child in node.children:
@@ -166,21 +212,20 @@ class PlayerControllerMinimax(PlayerController):
                     break
         return v
 
-    def heuristic_simple(self, node):
+    def heuristic_simple_old(self, node):
 
-        # state_key = self.hash_zobrist(node)
-        # if state_key in self.transposition_table.keys():
-        #     return self.transposition_table[state_key][0]
         state = node.state
         fish_positions = state.get_fish_positions()
         fish_scores = state.get_fish_scores()
         hook_positions = state.get_hook_positions()
+        score_w = 100
+        fish_w = 10
+        caught_w = 1000
 
         current_score = self.heuristic(node)
 
         fish_distance_p0, fish_distance_p1 = 0, 0
         caught_fish_p0 = 0
-
         # Calculate the proximity of fish to the hook for both players
         for fish_type, fish_pos in fish_positions.items():
             distance_p0_x_round_world = 20 - hook_positions[0][0] + fish_pos[0]
@@ -217,7 +262,72 @@ class PlayerControllerMinimax(PlayerController):
                     else:
                         fish_distance_p0 += fish_scores[fish_type] / distance_p0
 
-        result = current_score + fish_distance_p0 + caught_fish_p0
+        result = score_w*current_score + fish_w*fish_distance_p0 + caught_w*caught_fish_p0
+        return result
+
+    def heuristic_simple(self, node):
+
+        state = node.state
+        fish_positions = state.get_fish_positions()
+        fish_scores = state.get_fish_scores()
+        hook_positions = state.get_hook_positions()
+        score_w = 100
+        fish_w = 10
+        caught_w = 1000
+
+        current_score = self.heuristic(node)
+
+        fish_distance_p0, fish_distance_p1 = 0, 0
+        caught_fish_p0 = 0
+        # Calculate the proximity of fish to the hook for both players
+        for fish_type, fish_pos in fish_positions.items():
+            distance_p0_x_round_world = 20 - hook_positions[0][0] + fish_pos[0]
+            distance_p0_x = abs(fish_pos[0] - hook_positions[0][0])
+            distance_p1_x_round_world = 20 - hook_positions[1][0] + fish_pos[0]
+            distance_p1_x = abs(fish_pos[0] - hook_positions[1][0])
+
+            if distance_p0_x_round_world > distance_p0_x:
+                # The fish is reachable for p_0 faster by going straight
+                distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = False
+            else:
+                # The fish is reachable faster by going around the world
+                distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = True
+
+            if distance_p1_x_round_world > distance_p1_x:
+                distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = False
+            else:
+                distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = True
+
+            if distance_p0 == 0:
+                # If fish is caught
+                caught_fish_p0 = fish_scores[fish_type]
+            else:
+                if distance_p1 != 0:
+                    # If fish is not caught by p_1
+                    if self.boat_blocking_path(fish_pos, hook_positions, 0, round_world_p0):
+                        fish_distance_p0 += fish_scores[fish_type] / alternative_distance_p0
+                    else:
+                        fish_distance_p0 += fish_scores[fish_type] / distance_p0
+
+            if distance_p1 == 0:
+                fish_distance_p1 += fish_scores[fish_type]
+            else:
+                if distance_p0 != 0:
+                    # If fish is not caught by p_1
+                    if self.boat_blocking_path(fish_pos, hook_positions, 1, round_world_p1):
+                        fish_distance_p1 += fish_scores[fish_type] / alternative_distance_p1
+                    else:
+                        fish_distance_p1 += fish_scores[fish_type] / distance_p1
+
+        result = score_w*current_score + fish_w*fish_distance_p0 + caught_w*caught_fish_p0 - fish_w*fish_distance_p1
         return result
 
     def boat_blocking_path(self, fish_pos, hook_positions, player_id, round_world):
@@ -258,3 +368,7 @@ class PlayerControllerMinimax(PlayerController):
         indices = np.argsort(-np.array(moves))
         return [node.children[i] for i in indices]
 
+    def add_to_transposition(self, node, value):
+        state_key = self.hash_zobrist(node)
+        self.transposition_table[state_key] = value
+        return
