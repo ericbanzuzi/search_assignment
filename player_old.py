@@ -286,3 +286,69 @@ class PlayerControllerMinimax(PlayerController):
         for fish_type, fish_pos in fish_positions.items():
             state_key += self.random_values_M[fish_pos[0]][fish_pos[1]] * fish_scores[fish_type]
         return state_key
+
+    def heuristic_simple_new(self, node):
+
+        state = node.state
+        fish_positions = state.get_fish_positions()
+        fish_scores = state.get_fish_scores()
+        hook_positions = state.get_hook_positions()
+        score_w = 100
+        fish_w = 10
+        caught_w = 1000
+
+        current_score = self.utility(node)
+
+        fish_distance_p0, fish_distance_p1 = 0, 0
+        caught_fish_p0 = 0
+        # Calculate the proximity of fish to the hook for both players
+        for fish_type, fish_pos in fish_positions.items():
+            distance_p0_x_round_world = 20 - hook_positions[0][0] + fish_pos[0]
+            distance_p0_x = abs(fish_pos[0] - hook_positions[0][0])
+            distance_p1_x_round_world = 20 - hook_positions[1][0] + fish_pos[0]
+            distance_p1_x = abs(fish_pos[0] - hook_positions[1][0])
+
+            if distance_p0_x_round_world > distance_p0_x:
+                # The fish is reachable for p_0 faster by going straight
+                distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = False
+            else:
+                # The fish is reachable faster by going around the world
+                distance_p0 = distance_p0_x_round_world + abs(fish_pos[1] - hook_positions[0][1])
+                alternative_distance_p0 = distance_p0_x + abs(fish_pos[1] - hook_positions[0][1])
+                round_world_p0 = True
+
+            if distance_p1_x_round_world > distance_p1_x:
+                distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = False
+            else:
+                distance_p1 = distance_p1_x_round_world + abs(fish_pos[1] - hook_positions[1][1])
+                alternative_distance_p1 = distance_p1_x + abs(fish_pos[1] - hook_positions[1][1])
+                round_world_p1 = True
+
+            if distance_p0 == 0:
+                # If fish is caught
+                caught_fish_p0 = fish_scores[fish_type]
+            else:
+                if distance_p1 != 0:
+                    # If fish is not caught by p_1
+                    if self.boat_blocking_path(fish_pos, hook_positions, 0, round_world_p0):
+                        fish_distance_p0 += fish_scores[fish_type] / alternative_distance_p0
+                    else:
+                        fish_distance_p0 += fish_scores[fish_type] / distance_p0
+
+            if distance_p1 == 0:
+                fish_distance_p1 += fish_scores[fish_type]
+            else:
+                if distance_p0 != 0:
+                    # If fish is not caught by p_1
+                    if self.boat_blocking_path(fish_pos, hook_positions, 1, round_world_p1):
+                        fish_distance_p1 += fish_scores[fish_type] / alternative_distance_p1
+                    else:
+                        fish_distance_p1 += fish_scores[fish_type] / distance_p1
+
+        result = score_w*current_score + fish_w*fish_distance_p0 + caught_w*caught_fish_p0 - fish_w*fish_distance_p1
+        self.add_to_transposition(node, result)
+        return result
