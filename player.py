@@ -198,8 +198,7 @@ class PlayerControllerMinimax(PlayerController):
             children = self.sort_children_heuristic(node, 0)
             for child in children:
                 game_state = self.hashing(child)
-                if game_state in self.transposition_table.keys() and self.transposition_table[game_state][
-                    1] < child.depth:
+                if game_state in self.transposition_table.keys() and self.transposition_table[game_state][1] < child.depth:
                     v = self.transposition_table[game_state][0]
                 else:
                     v = np.max([v, self.alphabeta(child, depth - 1, alpha, beta, 1)])
