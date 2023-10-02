@@ -282,6 +282,7 @@ class PlayerControllerMinimax(PlayerController):
         elif len(fish_positions.keys()) == 0 and current_score < 0:
             result = -np.inf
         else:
+            # Idea: learning heuristics from experience, section 3.6.4 from AI book 
             result = score_w * current_score + fish_w * fish_distance_p0 + caught_w * caught_fish_p0
         self.add_to_transposition(node, result)
         return result
