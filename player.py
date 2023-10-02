@@ -283,6 +283,9 @@ class PlayerControllerMinimax(PlayerController):
             result = -np.inf
         else:
             # Idea: learning heuristics from experience, section 3.6.4 from AI book 
+            # Giving higher importance to good actions from the present (caught fish) --> 1000
+            # then to current score which tells us how good or bad we are doing --> 100 
+            # and lastly to future possible caught fishes --> 10
             result = score_w * current_score + fish_w * fish_distance_p0 + caught_w * caught_fish_p0
         self.add_to_transposition(node, result)
         return result
