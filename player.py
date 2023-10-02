@@ -221,7 +221,7 @@ class PlayerControllerMinimax(PlayerController):
 
     def heuristic(self, node):
         """
-        Calculate the value of the state as an approximation (using heuristics)
+        Calculate the value of the state as an approximation (using heuristics) using a weighted linear function where different weights are given to different features in the game
         :param node: a game tree node
         :return result: evaluation of the state based on heuristic
         """
