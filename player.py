@@ -90,44 +90,6 @@ class PlayerControllerMinimax(PlayerController):
 
         return best_move
 
-    def search_best_next_move(self, initial_tree_node, depth):
-        """
-        Use minimax with alphabeta pruning to find the best possible next move for player 0 (green boat)
-        :param initial_tree_node: Initial game tree node
-        :param depth: depth of the search
-        :type initial_tree_node: game_tree.Node
-            (see the Node class in game_tree.py for more information!)
-        :return: either "stay", "left", "right", "up" or "down"
-        :rtype: str
-        """
-        # initialize timer
-        self.elapsed_time = 0
-        self.start_time = time.time()
-
-        children = initial_tree_node.compute_and_get_children()
-        # check if a fish was caught and the only option is up -> return it
-        if len(children) == 1:
-            return ACTION_TO_STR[children[0].move]
-
-        # initialize the values for moves, alpha and beta
-        moves = [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf]
-        alpha, beta = -np.inf, np.inf
-        for child in initial_tree_node.children:
-            # if there is time, search the next child, else stop the search
-            self.elapsed_time = time.time() - self.start_time
-            if self.elapsed_time < self.time_limit:
-                value = self.alphabeta(child, depth - 1, alpha, beta, 1)
-                moves[child.move] = value
-                alpha = np.max([value, alpha])
-            else:
-                break
-
-        highest_indices = np.where(moves == np.max(moves))[0]
-        if len(highest_indices) >= 2:
-            return ACTION_TO_STR[random.choice(highest_indices)]
-        else:
-            return ACTION_TO_STR[np.argmax(moves)]
-
     def search_at_depth(self, initial_tree_node, depth, old_moves, move):
         """
         Use alphabeta for certain depth to find the best possible next move for player 0 (green boat)
@@ -360,9 +322,5 @@ class PlayerControllerMinimax(PlayerController):
         :return
         """
         state_key = self.hashing(node)
-        if state_key in self.transposition_table.keys() and self.transposition_table[state_key][0] < value:
-            self.transposition_table[state_key][0] = value
-            self.transposition_table[state_key][1] = node.depth
-        else:
-            self.transposition_table[state_key] = [value, node.depth]
+        self.transposition_table[state_key] = [value, node.depth]
         return
